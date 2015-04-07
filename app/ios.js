@@ -58,6 +58,7 @@ var IOS = function(args) {
   this.asyncResponseCb = null;
   this.returnedFromExecuteAtom = {};
   this.executedAtomsCounter = 0;
+  this.alertCounter = 0;
   this.curCoords = null;
   this.curWebCoords = null;
   this.onPageChangeCb = null;
@@ -581,7 +582,7 @@ IOS.prototype.push = function(elem) {
   this.queue.push(elem);
   var me = this;
 
-  //logger.info(("elem : " + elem).green);
+  logger.info(("elem : " + elem).green);
   if (typeof elem === "object") {
     elem = elem[0];
   }
@@ -600,6 +601,9 @@ IOS.prototype.push = function(elem) {
                   "command, waiting to run next command until done");
       setTimeout(next, 500);
       return;
+    } else {
+      logger.info('me.curWindowHandle : ' + me.curWindowHandle);
+      logger.info('me.processingRemoteCmd : ' + me.processingRemoteCmd);
     }
 
     if (me.queue.length <= 0 || me.progress > 0) {
@@ -615,6 +619,7 @@ IOS.prototype.push = function(elem) {
     me.progress++;
     logger.debug("Sending command to instruments: " + command);
     me.instruments.sendCommand(command, function(response) {
+      logger.info('response : ' + JSON.stringify(response));
       me.cbForCurrentCmd = null;
       if (typeof cb === 'function') {
         me.respond(response, cb);
@@ -860,6 +865,7 @@ IOS.prototype.executeAtom = function(atom, args, cb, alwaysDefaultFrame) {
       cb(err, res);
     }
   }, this));
+  logger.info('[executeAtom] lookForAlert : ' + counter);
   this.lookForAlert(cb, counter, 0, 5000);
 };
 
@@ -876,6 +882,7 @@ IOS.prototype.executeAtomAsync = function(atom, args, responseUrl, cb) {
       cb(err, res);
     }
   }, this));
+   logger.info('[executeAtomAsync] lookForAlert : ' + counter);
   this.lookForAlert(cb, counter, 0, 5000);
 };
 
@@ -899,22 +906,27 @@ IOS.prototype.parseExecuteResponse = deviceCommon.parseExecuteResponse;
 IOS.prototype.parseElementResponse = deviceCommon.parseElementResponse;
 
 IOS.prototype.lookForAlert = function(cb, counter, looks, timeout) {
+  logger.info('[lookForAlert] start : ' + looks + ', counter : ' + counter);
   var me = this;
   setTimeout(function(){
     if (typeof looks === 'undefined') {
       looks = 0;
+      logger.info(('looks = 0').red);
     }
     if (me.instruments !== null) {
       if (!me.returnedFromExecuteAtom[counter] && looks < 11 && !me.selectingNewPage) {
         logger.info("atom did not return yet, checking to see if " +
-          "we are blocked by an alert");
+          "we are blocked by an alert : " + counter);
         // temporarily act like we're not processing a remote command
         // so we can proxy the alert detection functionality
+        
         me.alertCounter++;
+        logger.info("alertCounter : " + me.alertCounter + ', counter : ' + counter);
         me.proxy("au.alertIsPresent()", function(err, res) {
+          logger.info("res : " + JSON.stringify(res) + ', counter : ' + counter);
           if (res !== null) {
             if (res.value === true) {
-              logger.info("Found an alert, returning control to client");
+              logger.info("Found an alert, returning control to client : " + counter);
               me.returnedFromExecuteAtom[counter] = true;
               cb(null, {
                 status: status.codes.Success.code
@@ -922,7 +934,9 @@ IOS.prototype.lookForAlert = function(cb, counter, looks, timeout) {
               });
             } else {
               // say we're processing remote cmd again
-              looks++;
+              logger.info('b looks : ' + looks + ', counter : ' + counter);
+              looks = looks + 1;
+              logger.info('a looks : ' + looks + ', counter : ' + counter);
               setTimeout(me.lookForAlert(cb, counter, looks), 1000);
             }
           }
